@@ -198,7 +198,7 @@ def insert_user():
     except Exception as e:
         return jsonify(error=str(e)), 400
 
-@app.route('/api/delete_members', methods=['POST'])
+@app.route('/api/delete_members', methods=['DELETE'])
 @swag_from({
     'parameters': [
         {
@@ -346,10 +346,8 @@ def user_login():
     except Exception as e:
         return jsonify(error=str(e)), 400
 
-
 with app.app_context():
     init_db()
 
 if __name__ == "__main__":
-    app.run(debug=True)
-
+    app.run(debug=True, port=5000)
