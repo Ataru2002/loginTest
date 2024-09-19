@@ -6,7 +6,7 @@ app = Flask(__name__)
 swagger = Swagger(app)
 
 
-DATABASE = 'test.db'
+DATABASE = '../../database/test.db'
 
 
 def get_db_connection():
@@ -16,10 +16,11 @@ def get_db_connection():
 
 def init_db():
     connect = get_db_connection()
+    #TODO: define Primary Key
     connect.execute('''
         CREATE TABLE IF NOT EXISTS users(
             id int,
-            username TEXT UNIQUE,
+            username TEXT UNIQUE PRIMARY KEY,
             password TEXT
         )
     ''')
@@ -269,6 +270,79 @@ def delete_user():
     except Exception as e:
         return jsonify(error=str(e)), 400
 
+@app.route('/api/user_login', methods=['POST'])
+@swag_from({
+    'parameters': [
+        {
+            'name': 'body',
+            'in': 'body',
+            'required': True,
+            'description': 'SQL command to execute',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'username': {
+                        'type': 'string',
+                        'example': 'john_doe'
+                    },
+                    'password': {
+                        'type': 'string',
+                        'example': 'some_user_password'
+                    }
+                },
+                'required':['username', 'password']
+            }
+        }
+    ],
+    'responses': {
+        203: {
+            'description': 'User successfully logged in',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'result': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'object',
+                            'example': 'User successfully logged in'
+                        }
+                    }
+                }
+            }
+        },
+        400:{
+            'description': 'Error logging user in',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'error': {
+                        'type': 'string',
+                        'example': 'Wrong username or password, or user does not exist'
+                    }
+                }
+            }
+        }
+    }
+})
+
+def user_login():
+    try:
+        data = request.json
+        username = data.get('username')
+        password = data.get('password')
+
+        connect = get_db_connection()
+        cursor = connect.cursor()
+        cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?' (username, password))
+        connect.commit()
+        connect.close()
+
+        if cursor.rowcount != 1:
+            return jsonify(message="Wrong username or password, or user does not exist"), 400
+        
+        return jsonify(message="Logged in successfully"), 203
+    except Exception as e:
+        return jsonify(error=str(e)), 400
 
 
 with app.app_context():
