@@ -5,9 +5,7 @@ from flasgger import Swagger, swag_from
 app = Flask(__name__)
 swagger = Swagger(app)
 
-
 DATABASE = '../../database/test.db'
-
 
 def get_db_connection():
     connect = sqlite3.connect(DATABASE)
@@ -266,7 +264,7 @@ def delete_user():
         if cursor.rowcount == 0:
             return jsonify(message="User not found"), 400
 
-        return jsonify(message="User successfully added"), 202
+        return jsonify(message="User successfully deleted"), 202
     except Exception as e:
         return jsonify(error=str(e)), 400
 
@@ -333,14 +331,18 @@ def user_login():
 
         connect = get_db_connection()
         cursor = connect.cursor()
-        cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?' (username, password))
+        print(username)
+        print(password)
+        cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))
+        result = cursor.fetchall()
         connect.commit()
         connect.close()
 
-        if cursor.rowcount != 1:
-            return jsonify(message="Wrong username or password, or user does not exist"), 400
+        #MUST RETURN EITHER 0 or 1, ELSE DUPLICATE users in the DATABASE
+        if len(result) == 1:
+            return jsonify(message="Logged in successfully"), 203
         
-        return jsonify(message="Logged in successfully"), 203
+        return jsonify(message="Wrong username or password, or user does not exist"), 400
     except Exception as e:
         return jsonify(error=str(e)), 400
 
