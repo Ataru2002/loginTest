@@ -1,220 +1,89 @@
-import sqlite3
+import jwt, os, json
 from flask import Flask, jsonify, request
 from flasgger import Swagger, swag_from
+from auth_middleware import admin_required
+from user import User
+
+#TODO: will need to remove direct db setup from final product
+from db import init_db, reset_db
 
 app = Flask(__name__)
+#TODO: set default anthentication key
+SECRET_KEY = os.environ.get('SECRET_KEY') or 'sample_authentication_key'
+print(SECRET_KEY)
+app.config['SECRET_KEY'] = SECRET_KEY
+
 swagger = Swagger(app)
 
-DATABASE = '../../database/test.db'
-
-def get_db_connection():
-    connect = sqlite3.connect(DATABASE)
-    connect.row_factory = sqlite3.Row
-    return connect
-
-def init_db():
-    connect = get_db_connection()
-    #TODO: define Primary Key
-    connect.execute('''
-        CREATE TABLE IF NOT EXISTS users(
-            id int,
-            username TEXT UNIQUE PRIMARY KEY,
-            password TEXT
-        )
-    ''')
-    connect.commit()
-    connect.close()
-
-'''
-@app.route('/api/list_all_members', methods=['POST'])
+@app.route('/admin/list_all_users', methods=['GET'])
+@admin_required
 @swag_from({
-    'parameters': [
+    'tags': ['admin'],
+    'summary': 'List all users (admin access only)',
+    'parameters':[
         {
-            'name': 'sql',
-            'in': 'body',
+            'name': 'Authorization token',
+            'in': 'header',
             'required': True,
-            'description': 'SQL command to execute',
-            'schema': {
-                'type': 'object',
-                'properties': {
-                    'query': {
-                        'type': 'string',
-                        'example': 'SELECT * FROM users;'
-                    }
-                }
-            }
+            'description': 'Bearer token for admin authorization',
+            'type': 'string',
+            'example': 'Bearer sample_token'
         }
     ],
     'responses': {
         200: {
-            'description': 'SQL command success',
+            'description': 'Successfully retrieved the list of users',
             'schema': {
                 'type': 'object',
                 'properties': {
+                    'message': {'type': 'string', 'example': 'Output written to user.txt'},
                     'result': {
                         'type': 'array',
-                        'items': {
-                            'type': 'object'
-                        }
+                        'items': {'type': 'object'}
                     }
                 }
             }
         },
-        400:{
-            'description': 'SQL execution fail',
+        500: {
+            'description': 'Internal server error',
             'schema': {
                 'type': 'object',
                 'properties': {
-                    'error': {
-                        'type': 'string',
-                        'example': 'Error message'
-                    }
+                    'message': {'type': 'string', 'example': 'Something went wrong'},
+                    'error': {'type': 'string', 'example': 'Error message'}
                 }
             }
         }
     }
 })
-'''
-
-@app.route('/api/list_all_members', methods=['GET'])
-@swag_from({
-    'responses': {
-        200: {
-            'description': 'SQL command success',
-            'schema': {
-                'type': 'object',
-                'properties': {
-                    'result': {
-                        'type': 'array',
-                        'items': {
-                            'type': 'object'
-                        }
-                    }
-                }
-            }
-        },
-        400:{
-            'description': 'SQL execution fail',
-            'schema': {
-                'type': 'object',
-                'properties': {
-                    'error': {
-                        'type': 'string',
-                        'example': 'Error message'
-                    }
-                }
-            }
-        }
-    }
-})
-
-def list_all_members():
+def list_all_users():
     try:
-        query = "SELECT * from users"
-        connect = get_db_connection()
-        cursor = connect.cursor()
-        cursor.execute(query)
-        rows = cursor.fetchall()
-        result = [dict(row) for row in rows]
-        connect.close()
-        return jsonify(result=result), 200
+        print("got here!!")
+        user_lists = User().get_all()
+        #with open('user.txt', 'w') as file:
+        #    json.dump(user_lists, file, indent=4)
+        #    return jsonify(message='Output written to user.txt'), 200
+        return jsonify(user_lists), 200
     except Exception as e:
-        print(str(e))
-        return jsonify({'error': str(e)}), 400
+        return jsonify(message="Something went wrong", error=str(e)), 500
 
-
-@app.route('/api/insert_members', methods=['POST'])
+@app.route('/admin/delete_user', methods=['DELETE'])
+@admin_required
 @swag_from({
+    'tags': ['admin'],
+    'summary': 'Delete a user by ID (admin access only)',
     'parameters': [
         {
-            'name': 'body',
+            'name': 'userid',
             'in': 'body',
             'required': True,
-            'description': 'SQL command to execute',
+            'description': 'User ID to be deleted',
             'schema': {
                 'type': 'object',
                 'properties': {
-                    'username': {
-                        'type': 'string',
-                        'example': 'john_doe'
-                    },
-                    'password': {
-                        'type': 'string',
-                        'example': 'some_secure_password'
-                    }
-                }
-            }
-        }
-    ],
-    'responses': {
-        201: {
-            'description': 'User successfully added',
-            'schema': {
-                'type': 'object',
-                'properties': {
-                    'result': {
-                        'type': 'array',
-                        'items': {
-                            'type': 'object',
-                            'example': 'User successfully added'
-                        }
-                    }
-                }
-            }
-        },
-        400:{
-            'description': 'Error adding user to database',
-            'schema': {
-                'type': 'object',
-                'properties': {
-                    'error': {
-                        'type': 'string',
-                        'example': 'User already exist or database error'
-                    }
-                }
-            }
-        }
-    }
-})
-
-def insert_user():
-    try:
-        data = request.json
-        ids = -1 #will need to change later
-        username = data.get('username')
-        password = data.get('password')
-
-        connect = get_db_connection()
-        cursor = connect.cursor()
-
-        cursor.execute('INSERT INTO users (id, username, password) VALUES (?, ?, ?)', (ids, username, password))
-        connect.commit()
-        connect.close()
-
-        return jsonify(message="User successfully added"), 201
-
-    except sqlite3.IntegrityError:
-        return jsonify(error="Username already exists"), 400
-    except Exception as e:
-        return jsonify(error=str(e)), 400
-
-@app.route('/api/delete_members', methods=['DELETE'])
-@swag_from({
-    'parameters': [
-        {
-            'name': 'body',
-            'in': 'body',
-            'required': True,
-            'description': 'SQL command to execute',
-            'schema': {
-                'type': 'object',
-                'properties': {
-                    'username': {
-                        'type': 'string',
-                        'example': 'john_doe'
-                    }
+                    'userid': {'type': 'string', 'example': '613b7d9f2b3d9a003d8b2a72'}
                 },
-                'required':['username']
+                'required': ['userid']
             }
         }
     ],
@@ -224,71 +93,148 @@ def insert_user():
             'schema': {
                 'type': 'object',
                 'properties': {
-                    'result': {
-                        'type': 'array',
-                        'items': {
-                            'type': 'object',
-                            'example': 'User successfully deleted'
-                        }
-                    }
+                    'message': {'type': 'string', 'example': 'User successfully deleted'}
                 }
             }
         },
-        400:{
-            'description': 'Error deleting user to database',
+        400: {
+            'description': 'Bad request - missing or invalid data',
             'schema': {
                 'type': 'object',
                 'properties': {
-                    'error': {
-                        'type': 'string',
-                        'example': 'User does not exist or database error'
-                    }
+                    'message': {'type': 'string', 'example': 'Please provide user info'},
+                    'error': {'type': 'string', 'example': 'Bad request'}
+                }
+            }
+        },
+        402: {
+            'description': 'Failed to delete user due to database issue',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string', 'example': 'Failed to delete user with id {id}'},
+                    'error': {'type': 'string', 'example': 'Database failed'}
+                }
+            }
+        },
+        500: {
+            'description': 'Internal server error',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string', 'example': 'Something went wrong'},
+                    'error': {'type': 'string', 'example': 'Error message'}
                 }
             }
         }
     }
 })
-
 def delete_user():
     try:
         data = request.json
-        username = data.get('username')
-
-        connect = get_db_connection()
-        cursor = connect.cursor()
-
-        cursor.execute('DELETE FROM users WHERE username = ?', (username,))
-        connect.commit()
-        connect.close()
-
-        if cursor.rowcount == 0:
-            return jsonify(message="User not found"), 400
-
+        if not data:
+            return jsonify(message="Please provide user info", error="Bad request"), 400
+        
+        old_user = User().delete(data['userid'])
+        if old_user:
+            id = data['userid']
+            return jsonify(message="Failed to delete user with id {id}", error="Database failed"), 402
+        
         return jsonify(message="User successfully deleted"), 202
     except Exception as e:
-        return jsonify(error=str(e)), 400
+        return jsonify(message="Something went wrong", error=str(e)), 500
 
-@app.route('/api/user_login', methods=['POST'])
+@app.route('/user/user_register', methods=['POST'])
 @swag_from({
+    'tags': ['user'],
+    'summary': 'Register a new user',
     'parameters': [
         {
-            'name': 'body',
+            'name': 'user',
             'in': 'body',
             'required': True,
-            'description': 'SQL command to execute',
+            'description': 'Username and password to be registered',
             'schema': {
                 'type': 'object',
                 'properties': {
-                    'username': {
-                        'type': 'string',
-                        'example': 'john_doe'
-                    },
-                    'password': {
-                        'type': 'string',
-                        'example': 'some_user_password'
-                    }
+                    'username': {'type': 'string', 'example': 'john_doe'},
+                    'password': {'type': 'string', 'example': 'some_secure_password'},
+                    'email': {'type': 'string', 'example': 'someemail@test.com'}
+                }
+            }
+        }
+    ],
+    'responses': {
+        201: {
+            'description': 'User successfully registered',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string', 'example': 'User successfully added'}
+                }
+            }
+        },
+        400: {
+            'description': 'Bad request - missing or invalid data',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string', 'example': 'Please provide user info'},
+                    'error': {'type': 'string', 'example': 'Bad request'}
+                }
+            }
+        },
+        401: {
+            'description': 'User already exists or database error',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'error': {'type': 'string', 'example': 'User already exists or database error'}
+                }
+            }
+        },
+        500: {
+            'description': 'Internal server error',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string', 'example': 'Something went wrong'},
+                    'error': {'type': 'string', 'example': 'Error message'}
+                }
+            }
+        }
+    }
+})
+def add_user():
+    try:
+        new_user = request.json
+        if not new_user:
+            return jsonify(message="Please provide user info", error="Bad request"), 400
+        user = User().create(new_user["username"], new_user["email"], new_user["password"], isAdmin=False)
+        if not user:
+            return jsonify(error="User already exists or database error"), 401
+
+        return jsonify(message="User successfully added"), 201
+    except Exception as e:
+        return jsonify(message="Something went wrong", error=str(e)), 500
+    
+@app.route('/user/user_login', methods=['POST'])
+@swag_from({
+    'tags': ['user'],
+    'summary': 'User login',
+    'parameters': [
+        {
+            'name': 'user',
+            'in': 'body',
+            'required': True,
+            'description': 'Username and password for login',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'username': {'type': 'string', 'example': 'john_doe'},
+                    'password': {'type': 'string', 'example': 'some_user_password'}
                 },
-                'required':['username', 'password']
+                'required': ['username', 'password']
             }
         }
     ],
@@ -298,56 +244,78 @@ def delete_user():
             'schema': {
                 'type': 'object',
                 'properties': {
-                    'result': {
-                        'type': 'array',
-                        'items': {
-                            'type': 'object',
-                            'example': 'User successfully logged in'
-                        }
-                    }
+                    'message': {'type': 'string', 'example': 'Logged in successfully'},
+                    'data': {'type': 'object'}
                 }
             }
         },
-        400:{
-            'description': 'Error logging user in',
+        400: {
+            'description': 'Bad request - missing or invalid data',
             'schema': {
                 'type': 'object',
                 'properties': {
-                    'error': {
-                        'type': 'string',
-                        'example': 'Wrong username or password, or user does not exist'
-                    }
+                    'message': {'type': 'string', 'example': 'Please provide user info'},
+                    'error': {'type': 'string', 'example': 'Bad request'}
+                }
+            }
+        },
+        404: {
+            'description': 'Unauthorized - incorrect credentials or user does not exist',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string', 'example': 'Wrong username or password, or user does not exist'},
+                    'error': {'type': 'string', 'example': 'Unauthorized'}
+                }
+            }
+        },
+        500: {
+            'description': 'Internal server error',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string', 'example': 'Something went wrong'},
+                    'error': {'type': 'string', 'example': 'Error message'}
                 }
             }
         }
     }
 })
-
 def user_login():
     try:
         data = request.json
-        username = data.get('username')
-        password = data.get('password')
-
-        connect = get_db_connection()
-        cursor = connect.cursor()
-        print(username)
-        print(password)
-        cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))
-        result = cursor.fetchall()
-        connect.commit()
-        connect.close()
-
-        #MUST RETURN EITHER 0 or 1, ELSE DUPLICATE users in the DATABASE
-        if len(result) == 1:
-            return jsonify(message="Logged in successfully"), 203
+        if not data:
+            return jsonify(message="Please provide user info", error="Bad request"), 400
         
-        return jsonify(message="Wrong username or password, or user does not exist"), 400
+        curr_user = User().login(
+            data['username'],
+            data['password']
+        )
+
+        if curr_user:
+            try:
+                curr_user['token'] = jwt.encode(
+                    {"userid": curr_user["userid"],
+                     "tag": curr_user["tag"]},
+                    app.config["SECRET_KEY"],
+                    algorithm="HS256"
+                )
+                #TODO: should only return needed data
+                return jsonify(message="Logged in successfully", data=curr_user), 203
+            except Exception as e:
+                return jsonify(message="Something went wrong", error=str(e)), 500
+
+        return jsonify(message="Wrong username or password, or user does not exist", error="Unauthorized"), 404
+        
     except Exception as e:
-        return jsonify(error=str(e)), 400
+        return jsonify(message="Something went wrong", error=str(e)), 500
 
 with app.app_context():
+    reset_db()
     init_db()
+    dummy_admin = User().create("dummyAdmin", "admin@email.com", "admin_password", isAdmin=True)
+    with open('admin.txt', 'w') as file:
+            json.dump(dummy_admin, file, indent=4)
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
