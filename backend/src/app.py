@@ -58,7 +58,6 @@ swagger = Swagger(app)
 })
 def list_all_users():
     try:
-        print("got here!!")
         user_lists = User().get_all()
         #with open('user.txt', 'w') as file:
         #    json.dump(user_lists, file, indent=4)
