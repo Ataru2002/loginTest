@@ -1,8 +1,11 @@
 import jwt, os, json
-from flask import Flask, jsonify, request
+from flask import Flask, render_template, Response, jsonify, request
 from flasgger import Swagger, swag_from
 from auth_middleware import admin_required
 from user import User
+import cv2
+import time
+import threading
 
 #TODO: will need to remove direct db setup from final product
 from db import init_db, reset_db
@@ -14,6 +17,31 @@ print(SECRET_KEY)
 app.config['SECRET_KEY'] = SECRET_KEY
 
 swagger = Swagger(app)
+camera = None
+
+def frames_gen():
+    global camera
+    while True:
+        success, frame = camera.read()
+        if not success:
+            break
+        else:
+            ret, buffer = cv2.imencode('.jpg', frame)
+            frame = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+def stop_webcam(duration):
+    """
+    Stop webcam after a certain amount of time
+    """
+    global camera
+    time.sleep(duration)
+    if camera is not None:
+        camera.release()
+        camera = None
+        print("Camera deactivated")
+
 
 @app.route('/admin/list_all_users', methods=['GET'])
 @admin_required
@@ -309,12 +337,56 @@ def user_login():
     except Exception as e:
         return jsonify(message="Something went wrong", error=str(e)), 500
 
+
+@app.route('/user/activate_webcam', methods=['GET'])
+@swag_from({
+    'tags': ['user'],
+    'summary': 'Activate webcam from user',
+    'responses': {
+        204: {
+            'description': 'Webcam activated and streaming',
+        },
+        400: {
+            'description': 'Webcam failed',
+        },
+    }
+})
+def activate_webcam():
+    global camera
+    if camera is None:
+        camera = cv2.VideoCapture(0)  # Start the webcam
+        if not camera.isOpened():
+            return jsonify({"message": "Webcam failed"}), 500
+        
+        # Start a thread to deactivate the camera after 5 seconds
+        threading.Thread(target=stop_webcam, args=(10,)).start()
+
+    return jsonify({"message": "Camera activated for 10 seconds"}), 204
+
+@app.route('/video_feed')
+def video_feed():
+    global camera
+    if camera is None or not camera.isOpened():
+        return "Camera is not active", 404
+    return Response(frames_gen(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/')
+def index():
+    """
+    HTML page to display the video stream.
+    """
+    return render_template('index.html')
+
+
 with app.app_context():
     reset_db()
     init_db()
     dummy_admin = User().create("dummyAdmin", "admin@email.com", "admin_password", isAdmin=True)
     with open('admin.txt', 'w') as file:
             json.dump(dummy_admin, file, indent=4)
+
+
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

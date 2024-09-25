@@ -1,0 +1,7 @@
+{
+    "userid": 100000001,
+    "username": "dummyAdmin",
+    "password": "admin_password",
+    "email": "admin@email.com",
+    "tag": "ADMIN"
+}
