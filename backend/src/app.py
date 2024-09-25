@@ -338,7 +338,7 @@ def user_login():
         return jsonify(message="Something went wrong", error=str(e)), 500
 
 
-@app.route('/user/activate_webcam', methods=['GET'])
+@app.route('/user/activate_webcam', methods=['POST'])
 @swag_from({
     'tags': ['user'],
     'summary': 'Activate webcam from user',
@@ -358,7 +358,7 @@ def activate_webcam():
         if not camera.isOpened():
             return jsonify({"message": "Webcam failed"}), 500
         
-        # Start a thread to deactivate the camera after 5 seconds
+        # Start a thread to deactivate the camera after 10 seconds
         threading.Thread(target=stop_webcam, args=(10,)).start()
 
     return jsonify({"message": "Camera activated for 10 seconds"}), 204
