@@ -3,6 +3,7 @@ from flask import Flask, render_template, Response, jsonify, request
 from flasgger import Swagger, swag_from
 from auth_middleware import admin_required
 from user import User
+from model.main import execute
 import cv2
 import time
 import threading
@@ -19,28 +20,6 @@ app.config['SECRET_KEY'] = SECRET_KEY
 swagger = Swagger(app)
 camera = None
 
-def frames_gen():
-    global camera
-    while True:
-        success, frame = camera.read()
-        if not success:
-            break
-        else:
-            ret, buffer = cv2.imencode('.jpg', frame)
-            frame = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-
-def stop_webcam(duration):
-    """
-    Stop webcam after a certain amount of time
-    """
-    global camera
-    time.sleep(duration)
-    if camera is not None:
-        camera.release()
-        camera = None
-        print("Camera deactivated")
 
 
 @app.route('/admin/list_all_users', methods=['GET'])
@@ -356,12 +335,34 @@ def activate_webcam():
     if camera is None:
         camera = cv2.VideoCapture(0)  # Start the webcam
         if not camera.isOpened():
-            return jsonify({"message": "Webcam failed"}), 500
+            return jsonify({"message": "Webcam failed"}), 400
         
         # Start a thread to deactivate the camera after 10 seconds
         threading.Thread(target=stop_webcam, args=(10,)).start()
+        return jsonify({"message": "Camera activated for 10 seconds"}), 204
 
-    return jsonify({"message": "Camera activated for 10 seconds"}), 204
+def frames_gen():  
+    global camera
+    num_frames = [0]
+    success, frame = camera.read()
+    while success:
+        execute(camera, frame, num_frames)
+        ret, buffer = cv2.imencode('.jpg', frame)
+        frame = buffer.tobytes()
+        yield (b'--frame\r\n'
+                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        success, frame = camera.read()
+
+def stop_webcam(duration):
+    """
+    Stop webcam after a certain amount of time
+    """
+    global camera
+    time.sleep(duration)
+    if camera is not None:
+        camera.release()
+        camera = None
+        print("Camera deactivated")
 
 @app.route('/video_feed')
 def video_feed():
@@ -390,3 +391,4 @@ with app.app_context():
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
+
